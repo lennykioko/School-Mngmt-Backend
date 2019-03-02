@@ -1,7 +1,9 @@
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.conf import settings
 
+from graphql_jwt.utils import jwt_decode
 import graphene
 from graphene_django import DjangoObjectType
 from graphql import GraphQLError
@@ -530,7 +532,7 @@ class Query(graphene.ObjectType):
         first=graphene.Int(),
         skip=graphene.Int(),
     )
-    current_user = graphene.Field(UserType)
+    current_user = graphene.Field(UserType, token=graphene.String())
 
     guardian = graphene.Field(
         GuardianType,
@@ -619,11 +621,19 @@ class Query(graphene.ObjectType):
 
         return qs
 
-    def resolve_current_user(self, info, **kwargs):
+    def resolve_current_user(self, info, token=None, **kwargs):
+        if token:
+            try:
+                decoded = jwt_decode(token)
+                username = decoded['username']
+                user = get_user_model().objects.get(username=username)
+                return user
+            except Exception as err:
+                raise GraphQLError(f"Error! Please ensure that your token is valid. {str(err)}")  # noqa E501
+
         user = info.context.user
         if user.is_anonymous:
-            raise GraphQLError("Not logged in!")
-
+            raise GraphQLError("Not logged in and user token not provided!")
         return user
 
     @login_required
@@ -642,6 +652,7 @@ class Query(graphene.ObjectType):
             filter = (Q(full_name__icontains=search)
                       | Q(phone__icontains=search)
                       | Q(email__icontains=search)
+                      | Q(gender__icontains=search)
                       | Q(id_number__icontains=search)
                       | Q(profession__icontains=search)
                       | Q(DOB__icontains=search))
@@ -672,6 +683,7 @@ class Query(graphene.ObjectType):
             filter = (Q(full_name__icontains=search)
                       | Q(phone__icontains=search)
                       | Q(email__icontains=search)
+                      | Q(gender__icontains=search)
                       | Q(id_number__icontains=search)
                       | Q(subjects__icontains=search)
                       | Q(joined_at__icontains=search)
@@ -703,8 +715,11 @@ class Query(graphene.ObjectType):
             filter = (Q(full_name__icontains=search)
                       | Q(phone__icontains=search)
                       | Q(email__icontains=search)
+                      | Q(registration_number__icontains=search)
                       | Q(class_room__icontains=search)
-                      | Q(guardians__icontains=search)
+                      | Q(gender__icontains=search)
+                      | Q(guardians__full_name__icontains=search)
+                      | Q(guardians__id_number__icontains=search)
                       | Q(joined_at__icontains=search)
                       | Q(DOB__icontains=search))
 
