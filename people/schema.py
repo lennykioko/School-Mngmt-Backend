@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
+from django.db.models import Q
 
 import graphene
 from graphene_django import DjangoObjectType
@@ -523,7 +524,12 @@ class Query(graphene.ObjectType):
         id=graphene.Int(required=True),
     )
 
-    users = graphene.List(UserType)
+    users = graphene.List(
+        UserType,
+        search=graphene.String(),
+        first=graphene.Int(),
+        skip=graphene.Int(),
+    )
     current_user = graphene.Field(UserType)
 
     guardian = graphene.Field(
@@ -593,8 +599,25 @@ class Query(graphene.ObjectType):
         return get_object_or_404(get_user_model(), pk=id)
 
     @login_required
-    def resolve_users(self, info, **kwargs):
-        return get_user_model().objects.all()
+    def resolve_users(self, info, search=None, first=None, skip=None,
+                      **kwargs):
+
+        qs = get_user_model().objects.all()
+        if search:
+            filter = (Q(username__icontains=search)
+                      | Q(email__icontains=search)
+                      | Q(first_name__icontains=search)
+                      | Q(last_name__icontains=search))
+
+            qs = qs.filter(filter)
+
+        if skip:
+            qs = qs[skip:]
+
+        if first:
+            qs = qs[:first]
+
+        return qs
 
     def resolve_current_user(self, info, **kwargs):
         user = info.context.user
